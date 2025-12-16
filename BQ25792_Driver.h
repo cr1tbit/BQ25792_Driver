@@ -215,7 +215,8 @@ public:
 
     void reset();
 
-private:
+// private: //commented out for testing
+
     void readBytes(uint8_t addr, uint8_t *data, uint8_t size);
     uint16_t readWord(uint8_t addr);
     uint8_t readByte(uint8_t addr);
