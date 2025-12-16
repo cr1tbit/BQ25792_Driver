@@ -51,40 +51,8 @@ void BQ25792::begin()
     attachInterrupt(BCIN_Pin, chargerInturruptCallback, CHANGE);
 }
 
-bool BQ25792::flashChargeLevel(uint16_t pinToFlash, int totalDuration, uint16_t cycles)
-{
-    float vBat = getVBAT();
-    float min = getVSYSMIN();
-    float max = getChargeVoltageLimit();
-
-    float onTime = -1000;
-    float offTime = 2000;
-    totalDuration - onTime;
-    while (onTime < 0 || onTime > 1000)
-    {
-        vBat = getVBAT();
-        onTime = map(vBat * 100, min * 100, max * 100, 0, totalDuration);
-        DEBUG_PRINTLN("Trying");
-        delay(1000);
-    }
-    offTime = totalDuration - onTime;
-    DEBUG_PRINTF("Vbat: %.1f   Min: %.1f   Max: %.1f\n", vBat, min, max);
-    DEBUG_PRINTF("ON: %.1f  OFF:%.1f\n", onTime, offTime);
-    for (int i = 0; i < cycles; i++)
-    {
-        digitalWrite(pinToFlash, HIGH);
-        delay(onTime);
-        digitalWrite(pinToFlash, LOW);
-        delay(offTime);
-    }
-
-    return true;
-}
-
 String BQ25792::getChargeStatus()
 {
- 
-
     switch((uint8_t)getChargeStatus0()){
         case 0x0:
             return String("Not Charging");
@@ -111,8 +79,6 @@ String BQ25792::getChargeStatus()
             return String("Charging Done");
         break;
     }
-   
-
    return String("noipe");
 }
 
@@ -276,18 +242,64 @@ bool BQ25792::isErrorPresent()
     return err > 0;
 }
 
-float BQ25792::getVBAT()
+
+uint8_t BQ25792::getErrorInt()
 {
-    writeByte(REG2F_ADC_Function_Disable_0, 0b10001111);
-    writeByte(REG30_ADC_Function_Disable_1, 0b11111111);
-    writeByte(REG2E_ADC_Control, 0b10001100);
-
-    uint8_t buf[2];
-    readBytes(REG3B_VBAT_ADC, &buf[0], 2);
-    uint16_t v;
-
-    return (float)(((buf[0]) << 8) | buf[1]) / 1000;
+    uint8_t err = readByte(REG20_FAULT_Status_0) | readByte(REG21_FAULT_Status_1);
+    return err;
 }
+
+float BQ25792::getADC(MEAS_TYPE type)
+{    
+    writeByte(REG2F_ADC_Function_Disable_0, measMap[type].ADC_Func[0]);
+    writeByte(REG30_ADC_Function_Disable_1, measMap[type].ADC_Func[1]);
+    writeByte(REG2E_ADC_Control, 0b10001100);
+    uint8_t buf[2];
+
+    readBytes(measMap[type].REG, &buf[0], 2);
+    uint16_t v = ((buf[0]) << 8) | buf[1];
+
+    return (float)v * measMap[type].scale;
+}
+
+// float BQ25792::getVBAT()
+// {
+//     writeByte(REG2F_ADC_Function_Disable_0, 0b10001111);
+//     writeByte(REG30_ADC_Function_Disable_1, 0b11111111);
+//     writeByte(REG2E_ADC_Control, 0b10001100);
+
+//     uint8_t buf[2];
+//     readBytes(REG3B_VBAT_ADC, &buf[0], 2);
+//     uint16_t v;
+
+//     return (float)(((buf[0]) << 8) | buf[1]) / 1000;
+// }
+
+// float BQ25792::getVBUS()
+// {
+//     writeByte(REG2F_ADC_Function_Disable_0, 0b00000000);
+//     writeByte(REG2E_ADC_Control, 0b10001100);
+
+//     uint8_t buf[2];
+//     readBytes(REG35_VBUS_ADC, &buf[0], 2);
+//     uint16_t v = ((buf[0]) << 8) | buf[1];
+
+//     return ((float)v/1000.0);
+// }
+
+
+// float BQ25792::getVAC2()
+// {
+//     writeByte(REG2F_ADC_Function_Disable_0, 0b00000000);
+//     writeByte(REG30_ADC_Function_Disable_1, 0b00000000);
+//     writeByte(REG2E_ADC_Control, 0b10001100);
+
+//     uint8_t buf[2];
+//     readBytes(REG39_VAC2_ADC, &buf[0], 2);
+//     uint16_t v = ((buf[0]) << 8) | buf[1];
+
+//     return ((float)v/1000.0);
+// }
 
 void BQ25792::setCellCount(uint8_t cells)
 {
@@ -296,31 +308,49 @@ void BQ25792::setCellCount(uint8_t cells)
     writeByte(REG0A_Recharge_Control, currentConfig);
 }
 
-float twosComplementToFloat(int16_t value)
-{
-    int16_t mask = 0x8000; // Mask for the sign bit
-    int16_t sign = value & mask;
-    int16_t magnitude = value & ~mask;
-    float result = static_cast<float>(magnitude);
+// float twosComplementToFloat(int16_t value)
+// {
+//     int16_t mask = 0x8000; // Mask for the sign bit
+//     int16_t sign = value & mask;
+//     int16_t magnitude = value & ~mask;
+//     float result = static_cast<float>(magnitude);
 
-    if (sign != 0)
-    {
-        // Value is negative, convert it to negative float
-        result = -result;
-    }
+//     if (sign != 0)
+//     {
+//         // Value is negative, convert it to negative float
+//         result = -result;
+//     }
 
-    return result;
-}
+//     return result;
+// }
 
-float BQ25792::getIBUS()
-{
-    writeByte(REG2E_ADC_Control, 0b10001100);
+// float BQ25792::getIBUS()
+// {
+//     writeByte(REG2F_ADC_Function_Disable_0, 0b00000000);
+//     writeByte(REG2E_ADC_Control, 0b10001100);
 
-    uint8_t buf[2];
-    readBytes(REG31_IBUS_ADC, &buf[0], 2);
-    int16_t val = (float)(((buf[0]) << 8) | buf[1]);
-    return twosComplementToFloat(val);
-}
+//     uint8_t buf[2];
+//     readBytes(REG31_IBUS_ADC, &buf[0], 2);
+    
+//     // int16_t val = (float)(((buf[0]) << 8) | buf[1]);
+//     int16_t val = (buf[0] << 8) | buf[1];
+//     return twosComplementToFloat(val);
+// }
+
+
+// float BQ25792::getIBAT()
+// {
+//     writeByte(REG2F_ADC_Function_Disable_0, 0b00000000);
+//     writeByte(REG2E_ADC_Control, 0b10001100);
+
+//     uint8_t buf[2];
+//     readBytes(REG33_IBAT_ADC, &buf[0], 2);
+    
+//     // int16_t val = (float)(((buf[0]) << 8) | buf[1]);
+//     int16_t val = (buf[0] << 8) | buf[1];
+//     return twosComplementToFloat(val);
+// }
+
 
 void BQ25792::getVBATReadDone()
 {

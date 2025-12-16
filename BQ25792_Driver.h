@@ -4,6 +4,8 @@
 #include <Wire.h>
 #include <string>
 
+#include <map>
+
 #define DEVICEADDRESS 0x6B
 
 struct __attribute__((__packed__)) precharge_control
@@ -107,8 +109,8 @@ enum class VBUS_STAT : uint8_t
 #define REG3D_VSYS_ADC 0x3D
 #define REG3F_TS_ADC 0x3F
 #define REG41_TDIE_ADC 0x41
-#define REG43_D +_ADC 0x43
-#define REG45_D -_ADC 0x45
+#define REG43_DP_ADC 0x43
+#define REG45_DM_ADC 0x45
 #define REG47_DPDM_Driver 0x47
 #define REG48_Part_Information 0x48
 
@@ -117,18 +119,54 @@ enum class VBUS_STAT : uint8_t
 
 #define CHARGEVOLTAGELIMIT_STEP_SIZE 10
 
+
+typedef struct {
+    uint8_t ADC_Func[2];
+    uint8_t REG;
+    float scale;
+} ADC_meas_t;
+
+typedef enum {
+    IBUS,
+    IBAT,
+    VBUS,
+    VAC1,
+    VAC2,
+    VBAT,
+    VSYS,
+    TS,
+    TDIE,
+    D_PLUS,
+    D_MINUS
+} MEAS_TYPE;
+
+
 class BQ25792
 {
 private:
     int BCIN_Pin;
     int QON_Pin;
 
+    ADC_meas_t measMap[11] = {
+        {{0, 0}, REG31_IBUS_ADC, 1.0},
+        {{0, 0}, REG33_IBAT_ADC, 1.0},
+        {{0, 0}, REG35_VBUS_ADC, 0.001},
+        {{0, 0}, REG37_VAC1_ADC, 0.001},
+        {{0, 0}, REG39_VAC2_ADC, 0.001},
+        {{0, 0}, REG3B_VBAT_ADC, 0.001},
+        {{0, 0}, REG3D_VSYS_ADC, 0.001},
+        {{0, 0}, REG3F_TS_ADC,   1.0},
+        {{0, 0}, REG41_TDIE_ADC, 1.0},
+        {{0, 0}, REG43_DP_ADC,   1.0},
+        {{0, 0}, REG45_DM_ADC,   1.0}
+    };
+
 public:
+
     BQ25792(int _BCIN, int _QON);
 
     // wrapper functions
     void begin();
-    bool flashChargeLevel(uint16_t pinToFlash, int totalDuration = 500, uint16_t cycles = 4);
     
     String getChargeStatus();
 
@@ -164,11 +202,12 @@ public:
     bool isBatteryPresent();
 
     bool isErrorPresent();
+    uint8_t getErrorInt();
+
 
     void setCellCount(uint8_t cells);
 
-    float getVBAT();
-    float getIBUS();
+    float getADC(MEAS_TYPE type);
 
     void resetPower();
 
